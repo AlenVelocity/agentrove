@@ -5,7 +5,8 @@ import base64
 import logging
 import os
 import shlex
-import signal
+import shutil
+import sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -40,11 +41,23 @@ from app.services.sandbox_providers.base import SandboxProvider
 from app.services.sandbox_providers.docker_provider import (
     DOCKER_SANDBOX_CONTAINER_PREFIX,
 )
+from app.utils.process import terminate_process_tree
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 ACP_PROTOCOL_VERSION = 1
+
+
+def _resolve_host_binary(binary: str) -> str:
+    if sys.platform != "win32":
+        return binary
+    # CreateProcess only tries ".exe" when it searches PATH, and the bundled
+    # launchers are .cmd files, so apply PATHEXT ourselves. Keep the bare name
+    # when nothing matches so the FileNotFoundError message still names it.
+    return shutil.which(binary) or binary
+
+
 # 100 MB — large enough for long-running agent sessions that produce extensive
 # tool output (e.g. full file reads, large diffs) without hitting asyncio's
 # default 64 KB stream buffer limit.
@@ -307,7 +320,7 @@ class AcpSession:
                 # Signal the whole process group, not just the direct child —
                 # the codex-acp node shim doesn't forward SIGTERM to its native
                 # binary, which would otherwise orphan to PID 1 and never exit.
-                os.killpg(self._process.pid, signal.SIGTERM)
+                terminate_process_tree(self._process.pid, force=False)
                 await asyncio.wait_for(self._process.wait(), timeout=5.0)
             except asyncio.TimeoutError:
                 await self._force_kill_group(self._process)
@@ -332,12 +345,10 @@ class AcpSession:
 
     @staticmethod
     async def _force_kill_group(process: asyncio.subprocess.Process) -> None:
-        # Group already gone (the child watcher thread can reap between our
-        # returncode check and the signal) — nothing left to kill or wait on.
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            return
+        # A group that is already gone (the child watcher thread can reap
+        # between our returncode check and the signal) is a no-op inside
+        # terminate_process_tree, and wait() then returns immediately.
+        terminate_process_tree(process.pid, force=True)
         await process.wait()
 
     @classmethod
@@ -674,7 +685,7 @@ class AcpSession:
             # New process group so close() can killpg the shim and its native
             # child together (codex-acp's shim doesn't forward signals).
             return await asyncio.create_subprocess_exec(
-                launch.binary,
+                _resolve_host_binary(launch.binary),
                 *launch.cli_args,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,

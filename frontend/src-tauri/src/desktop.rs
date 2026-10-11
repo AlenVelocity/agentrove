@@ -1,18 +1,24 @@
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use libc;
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSWindow, NSWindowButton};
 use rand::Rng;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[tauri::command]
 fn get_backend_port(state: tauri::State<'_, Arc<OnceLock<Result<u16, String>>>>) -> Result<u16, String> {
@@ -24,13 +30,13 @@ fn get_backend_port(state: tauri::State<'_, Arc<OnceLock<Result<u16, String>>>>)
     }
 }
 
-fn data_dir() -> std::path::PathBuf {
+fn data_dir() -> PathBuf {
     dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .unwrap_or_else(|| PathBuf::from("."))
         .join("com.agentrove.app")
 }
 
-fn ensure_secret_key(data_dir: &std::path::Path) -> String {
+fn ensure_secret_key(data_dir: &Path) -> String {
     fs::create_dir_all(data_dir).ok();
     let key_path = data_dir.join(".secret_key");
     if let Ok(key) = fs::read_to_string(&key_path) {
@@ -47,16 +53,27 @@ fn ensure_secret_key(data_dir: &std::path::Path) -> String {
     key
 }
 
-fn resolve_backend_binary(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
+// The file whose presence marks a usable sidecar: the bash launcher on Unix,
+// the bundled interpreter on Windows (run_build.mjs writes no bash there).
+#[cfg(not(windows))]
+fn sidecar_entry(sidecar_dir: &Path) -> PathBuf {
+    sidecar_dir.join("agentrove-backend")
+}
+
+#[cfg(windows)]
+fn sidecar_entry(sidecar_dir: &Path) -> PathBuf {
+    sidecar_dir.join("python").join("python.exe")
+}
+
+fn resolve_sidecar_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     #[cfg(debug_assertions)]
     {
-        let dev_binary = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        let dev_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
-            .join("backend-sidecar")
-            .join("agentrove-backend");
-        if dev_binary.exists() {
-            return dev_binary;
+            .join("backend-sidecar");
+        if sidecar_entry(&dev_dir).exists() {
+            return dev_dir;
         }
     }
 
@@ -65,22 +82,19 @@ fn resolve_backend_binary(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
         .resource_dir()
         .expect("failed to resolve resource dir");
 
-    let binary = resource_dir
-        .join("_up_")
-        .join("backend-sidecar")
-        .join("agentrove-backend");
-    if binary.exists() {
-        return binary;
+    let nested = resource_dir.join("_up_").join("backend-sidecar");
+    if sidecar_entry(&nested).exists() {
+        return nested;
     }
 
-    let direct = resource_dir.join("backend-sidecar").join("agentrove-backend");
-    if direct.exists() {
+    let direct = resource_dir.join("backend-sidecar");
+    if sidecar_entry(&direct).exists() {
         return direct;
     }
 
     panic!(
-        "Backend binary not found at {:?} or {:?}",
-        binary, direct
+        "Backend sidecar not found at {:?} or {:?}",
+        nested, direct
     );
 }
 
@@ -108,13 +122,32 @@ fn backend_ready(port: u16) -> bool {
     response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200")
 }
 
+#[cfg(unix)]
+fn kill_process_tree(child: &mut Child) {
+    // spawn_backend put the sidecar in its own process group, so a negative
+    // pid reaches uvicorn and every agent it spawned.
+    let pid = child.id() as libc::pid_t;
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+    }
+}
+
+#[cfg(windows)]
+fn kill_process_tree(child: &mut Child) {
+    // No process groups to signal on Windows; taskkill walks the tree by parent
+    // pid so the interpreter, uvicorn and the agent processes go together.
+    let _ = Command::new("taskkill")
+        .args(["/PID", &child.id().to_string(), "/T", "/F"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
 fn terminate_backend_process(backend: &Arc<Mutex<Option<Child>>>) {
     if let Ok(mut guard) = backend.lock() {
         if let Some(ref mut child) = *guard {
-            let pid = child.id() as libc::pid_t;
-            unsafe {
-                libc::kill(-pid, libc::SIGKILL);
-            }
+            kill_process_tree(child);
             let _ = child.wait();
         }
         *guard = None;
@@ -134,13 +167,9 @@ fn pipe_output<R: Read + Send + 'static>(stream: R, is_err: bool) {
     });
 }
 
-fn spawn_backend(
-    app_handle: &tauri::AppHandle,
-    data_dir: &std::path::Path,
-    secret_key: &str,
-    port: u16,
-) -> Child {
-    let backend_bin = resolve_backend_binary(app_handle);
+#[cfg(not(windows))]
+fn backend_path_env(_sidecar_dir: &Path) -> String {
+    // The bash launcher prepends the bundled bin dirs itself.
     let mut backend_path = std::env::var("PATH").unwrap_or_default();
     if let Some(home) = dirs::home_dir() {
         // OpenCode lives in ~/.opencode/bin; Tauri gives the backend an explicit PATH.
@@ -148,20 +177,29 @@ fn spawn_backend(
         backend_path.push_str(&format!(":{}/.local/bin", home.display()));
     }
     backend_path.push_str(":/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin");
+    backend_path
+}
 
-    let db_path = data_dir.join("agentrove.db").to_string_lossy().to_string();
-    let mut command = Command::new(&backend_bin);
-    command
-        .env("SECRET_KEY", secret_key)
-        .env("BASE_URL", format!("http://127.0.0.1:{port}"))
-        .env("DATABASE_URL", format!("sqlite+aiosqlite:///{db_path}"))
-        .env("PATH", backend_path)
-        .env(
-            "STORAGE_PATH",
-            data_dir.join("storage").to_string_lossy().to_string(),
-        )
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+#[cfg(windows)]
+fn backend_path_env(sidecar_dir: &Path) -> String {
+    // Same prefix the bash launcher adds on Unix: bundled rg, the ACP .cmd
+    // launchers, bundled node, then whatever the user has. ~/.local/bin is
+    // where Claude Code's native installer puts claude.exe.
+    let mut parts = vec![
+        sidecar_dir.join("bin").display().to_string(),
+        sidecar_dir.join("node").display().to_string(),
+        sidecar_dir.join("node_modules").join(".bin").display().to_string(),
+    ];
+    if let Some(home) = dirs::home_dir() {
+        parts.push(home.join(".local").join("bin").display().to_string());
+    }
+    parts.push(std::env::var("PATH").unwrap_or_default());
+    parts.join(";")
+}
+
+#[cfg(not(windows))]
+fn backend_command(sidecar_dir: &Path) -> Command {
+    let mut command = Command::new(sidecar_entry(sidecar_dir));
     unsafe {
         command.pre_exec(|| {
             if libc::setpgid(0, 0) != 0 {
@@ -170,6 +208,41 @@ fn spawn_backend(
             Ok(())
         });
     }
+    command
+}
+
+#[cfg(windows)]
+fn backend_command(sidecar_dir: &Path) -> Command {
+    // Run the interpreter directly rather than through a .cmd so no console
+    // window flashes and the pid we hold is the backend itself.
+    let mut command = Command::new(sidecar_entry(sidecar_dir));
+    command
+        .arg(sidecar_dir.join("entry.py"))
+        .env("PYTHONPATH", sidecar_dir)
+        .creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
+fn spawn_backend(
+    app_handle: &tauri::AppHandle,
+    data_dir: &Path,
+    secret_key: &str,
+    port: u16,
+) -> Child {
+    let sidecar_dir = resolve_sidecar_dir(app_handle);
+    let db_path = data_dir.join("agentrove.db").to_string_lossy().to_string();
+    let mut command = backend_command(&sidecar_dir);
+    command
+        .env("SECRET_KEY", secret_key)
+        .env("BASE_URL", format!("http://127.0.0.1:{port}"))
+        .env("DATABASE_URL", format!("sqlite+aiosqlite:///{db_path}"))
+        .env("PATH", backend_path_env(&sidecar_dir))
+        .env(
+            "STORAGE_PATH",
+            data_dir.join("storage").to_string_lossy().to_string(),
+        )
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     let mut child = command.spawn().expect("failed to spawn backend process");
 

@@ -76,7 +76,7 @@ Antigravity supports authentication through Google OAuth completed in a terminal
 
 ## Desktop
 
-Agentrove also has a macOS desktop app built with Tauri. It starts a bundled Python backend sidecar on an available `127.0.0.1` port and connects the frontend to it at launch.
+Agentrove also has a desktop app built with Tauri, for macOS and Windows. It starts a bundled Python backend sidecar on an available `127.0.0.1` port and connects the frontend to it at launch.
 
 - Download the latest Apple Silicon build from [Releases](https://github.com/Mng-dev-ai/agentrove/releases/latest).
 - Build from source:
@@ -86,6 +86,21 @@ cd frontend
 npm install
 npm run desktop:dev
 ```
+
+### Windows
+
+Builds from source on Windows x64; there is no published installer yet.
+
+Requirements:
+
+- [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload (Tauri links with MSVC).
+- The MSVC Rust toolchain: `rustup toolchain install 1.90.0-x86_64-pc-windows-msvc`, then in the repo `rustup override set 1.90.0-x86_64-pc-windows-msvc`.
+- [Git for Windows](https://git-scm.com/download/win). Claude Code needs its bash, and the host sandbox runs commands through it.
+- Node 20+ to run the build script. Python, Node 22, ripgrep and the ACP adapters are downloaded into `frontend/backend-sidecar` by `desktop/run_build.mjs`, the same as on macOS.
+
+`npm run desktop:dev` and `npm run desktop:build` work as on macOS; the build produces an NSIS installer under `src-tauri/target/release/bundle/nsis/`. Optional settings go in `%APPDATA%\com.agentrove.app\.env.desktop`.
+
+Not yet working on Windows: the terminal view (host PTYs need a ConPTY implementation), browser-use (installed on a best-effort basis), and code signing.
 
 ## Mobile (iOS)
 
