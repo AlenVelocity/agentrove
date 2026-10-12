@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
+import { FieldMessage } from '@/components/ui/primitives/FieldMessage/FieldMessage';
 import { Input } from '@/components/ui/primitives/Input/Input';
 import { Label } from '@/components/ui/primitives/Label/Label';
 import { useAuthStore } from '@/store/authStore';
@@ -40,22 +41,26 @@ export function OrdinCloudCard() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   if (!enabled) return null;
 
-  const handleConnect = () => {
-    if (!email.trim() || !password) {
-      toast.error('Enter your Ordin email and password');
+  const handleConnect = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setFormError('Enter the email and password you use for Ordin.');
       return;
     }
+    setFormError(null);
     connectMutation.mutate(
-      { email: email.trim(), password },
+      { email: trimmedEmail, password },
       {
         onSuccess: (result) => {
           setPassword('');
-          toast.success(`Connected to Ordin as ${result.email ?? email.trim()}`);
+          toast.success(`Connected to Ordin as ${result.email ?? trimmedEmail}`);
         },
-        onError: (error) => toast.error(error.message),
+        onError: (error) => setFormError(error.message),
       },
     );
   };
@@ -70,17 +75,18 @@ export function OrdinCloudCard() {
   if (connected) {
     return (
       <div className={styles.card}>
-        <div className={styles['card-header']}>
-          <h2 className={styles.url}>Ordin</h2>
+        <div className={styles['instance-header']}>
+          <h2 className={styles['instance-title']}>Ordin</h2>
           <StatusPill connected />
         </div>
         <p className={styles['signed-in']}>
-          Signed in as <span className={styles.email}>{status.data?.email}</span>
+          Signed in as <span className={styles.email}>{status.data?.email}</span>. Your Ordin chats
+          are in the sidebar with the cloud badge and continue from here.
         </p>
         <div className={styles.stats}>
           <div className={styles['stat-tile']}>
             <div className={styles['stat-value']}>{chats.data?.total ?? '—'}</div>
-            <div className={styles['stat-label']}>Cloud chats</div>
+            <div className={styles['stat-label']}>Chats in Ordin</div>
           </div>
         </div>
         <div className={styles.actions}>
@@ -106,42 +112,51 @@ export function OrdinCloudCard() {
         <StatusPill connected={false} />
       </div>
       <p className={styles['instance-desc']}>
-        Your Ordin chats appear in the sidebar and continue here. They keep running in the cloud.
+        Connect your Ordin account to see its chats in the sidebar and continue them here. They keep
+        running in Ordin.
       </p>
-      <div className={styles.form}>
+      <form className={styles.form} onSubmit={handleConnect} noValidate>
         <div className={styles.grid}>
           <div>
-            <Label className={styles.label}>Ordin email</Label>
+            <Label htmlFor="ordin-email" className={styles.label}>
+              Ordin email
+            </Label>
             <Input
+              id="ordin-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@extraordinary.com"
-              autoComplete="off"
+              autoComplete="username"
+              hasError={Boolean(formError) && !email.trim()}
             />
           </div>
           <div>
-            <Label className={styles.label}>Password</Label>
+            <Label htmlFor="ordin-password" className={styles.label}>
+              Password
+            </Label>
             <Input
+              id="ordin-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="off"
+              placeholder="Your Ordin password"
+              autoComplete="current-password"
+              hasError={Boolean(formError) && !password}
             />
           </div>
         </div>
+        <FieldMessage variant="error">{formError}</FieldMessage>
         <Button
-          type="button"
+          type="submit"
           variant="primary"
           size="sm"
-          onClick={handleConnect}
           isLoading={connectMutation.isPending}
           loadingText="Connecting..."
         >
-          Connect
+          Connect Ordin
         </Button>
-      </div>
+      </form>
     </div>
   );
 }

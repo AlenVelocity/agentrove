@@ -54,10 +54,80 @@
   width: 100%;
 }
 
-.portal-hint {
-  @include type.type-default(500);
-  color: var(--theme-text-secondary);
+.portal-note {
+  @include type.type-meta;
+  margin-top: var(--space-2);
+  color: var(--theme-text-quaternary);
   text-align: center;
+}
+
+// The hand-off to the browser: the one moment on this page that has to
+// explain itself, so it gets its own quiet panel instead of a disabled button.
+.portal-waiting {
+  @include anim.fade-in;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface-secondary);
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+}
+
+.portal-spinner {
+  @include anim.spin;
+  height: var(--space-5);
+  width: var(--space-5);
+  margin-bottom: var(--space-1);
+  color: var(--theme-text-tertiary);
+}
+
+.portal-waiting-title {
+  @include type.type-default(500);
+  color: var(--theme-text-primary);
+}
+
+.portal-waiting-text {
+  @include type.type-default;
+  max-width: 34ch;
+  color: var(--theme-text-secondary);
+}
+
+.portal-waiting-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.portal-waiting-sep {
+  color: var(--theme-text-quaternary);
+}
+
+.divider {
+  @include type.type-meta;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--theme-text-quaternary);
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background-color: var(--theme-border-secondary);
+  }
+}
+
+.portal-switch {
+  text-align: center;
+}
+
+// The password form revealed under the portal block needs room of its own.
+.portal + .form {
+  margin-top: var(--space-5);
 }
 
 .footer {

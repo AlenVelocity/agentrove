@@ -144,49 +144,77 @@ export function LoginPage() {
   const error = loginMutation.error?.message;
   const fieldConfigs = getFieldConfigs(handleForgotPassword);
   const passwordFormVisible = !portalEnabled || showPasswordForm;
-  const portalWaiting = portal.phase === 'waiting';
 
   return (
     <AuthPageLayout title={title} subtitle={subtitle}>
       {portalEnabled && (
         <div className={styles.portal}>
-          {portal.error && (
-            <AuthErrorBanner>
-              <p className={styles['error-text']}>{portal.error}</p>
-            </AuthErrorBanner>
-          )}
-          <Button
-            type="button"
-            variant="primary"
-            size="lg"
-            className={styles['portal-button']}
-            onClick={() => void portal.signIn()}
-            disabled={portalWaiting}
-            isLoading={portal.phase === 'starting'}
-            loadingText="Opening your browser..."
-            loadingIcon={<Loader2 className={styles['spinner-icon']} />}
-          >
-            <span>{portalWaiting ? 'Waiting for your browser' : 'Sign in with Extraordinary'}</span>
-            <ExternalLink className={styles.icon} />
-          </Button>
-          {portalWaiting && (
-            <p className={styles['portal-hint']}>
-              Finish signing in in the browser window, then come back here.{' '}
+          {portal.phase === 'waiting' ? (
+            <div className={styles['portal-waiting']} role="status" aria-live="polite">
+              <Loader2 className={styles['portal-spinner']} aria-hidden="true" />
+              <p className={styles['portal-waiting-title']}>Finish signing in in your browser</p>
+              <p className={styles['portal-waiting-text']}>
+                The Extraordinary portal opened in a new tab. Once it says you are signed in, come
+                back here. This page updates by itself.
+              </p>
+              <div className={styles['portal-waiting-actions']}>
+                <Button
+                  type="button"
+                  variant="link"
+                  className={styles['link-small']}
+                  onClick={() => void portal.openAgain()}
+                >
+                  Open the sign-in page again
+                </Button>
+                <span className={styles['portal-waiting-sep']} aria-hidden="true">
+                  ·
+                </span>
+                <Button
+                  type="button"
+                  variant="link"
+                  className={styles['link-small']}
+                  onClick={portal.cancel}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {portal.error && (
+                <AuthErrorBanner>
+                  <p className={styles['error-text']}>{portal.error}</p>
+                </AuthErrorBanner>
+              )}
               <Button
                 type="button"
-                variant="link"
-                className={styles['link-small']}
-                onClick={portal.cancel}
+                variant="primary"
+                size="lg"
+                className={styles['portal-button']}
+                onClick={() => void portal.signIn()}
+                isLoading={portal.phase === 'starting'}
+                loadingText="Opening your browser..."
+                loadingIcon={<Loader2 className={styles['spinner-icon']} />}
               >
-                Cancel
+                <span>{portal.error ? 'Try again' : 'Sign in with Extraordinary'}</span>
+                <ExternalLink className={styles.icon} aria-hidden="true" />
               </Button>
-            </p>
+              <p className={styles['portal-note']}>
+                Opens the Extraordinary portal in your browser. No separate account needed.
+              </p>
+            </>
           )}
-          <div className={styles.footer}>
+
+          <div className={styles.divider} role="separator">
+            <span>or</span>
+          </div>
+
+          <div className={styles['portal-switch']}>
             <Button
               type="button"
               variant="link"
               className={styles['link-small']}
+              aria-expanded={showPasswordForm}
               onClick={() => setShowPasswordForm((visible) => !visible)}
             >
               {showPasswordForm ? 'Hide email and password' : 'Use email and password instead'}

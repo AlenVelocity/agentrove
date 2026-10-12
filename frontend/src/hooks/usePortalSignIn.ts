@@ -13,6 +13,8 @@ interface UsePortalSignInResult {
   phase: PortalSignInPhase;
   error: string | null;
   signIn: () => Promise<void>;
+  // Re-opens the same sign-in page while waiting (the tab got closed or lost).
+  openAgain: () => Promise<void>;
   cancel: () => void;
 }
 
@@ -27,6 +29,7 @@ export function usePortalSignIn({ onSuccess }: UsePortalSignInParams): UsePortal
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const authorizeUrlRef = useRef<string | null>(null);
 
   const stopPolling = useCallback(() => {
     cancelledRef.current = true;
@@ -40,9 +43,14 @@ export function usePortalSignIn({ onSuccess }: UsePortalSignInParams): UsePortal
 
   const cancel = useCallback(() => {
     stopPolling();
+    authorizeUrlRef.current = null;
     setPhase('idle');
     setError(null);
   }, [stopPolling]);
+
+  const openAgain = useCallback(async () => {
+    if (authorizeUrlRef.current) await openExternalUrl(authorizeUrlRef.current);
+  }, []);
 
   const signIn = useCallback(async () => {
     stopPolling();
@@ -54,6 +62,7 @@ export function usePortalSignIn({ onSuccess }: UsePortalSignInParams): UsePortal
     try {
       const started = await portalAuthService.start();
       state = started.state;
+      authorizeUrlRef.current = started.authorize_url;
       await openExternalUrl(started.authorize_url);
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : 'Could not start sign-in');
@@ -67,7 +76,7 @@ export function usePortalSignIn({ onSuccess }: UsePortalSignInParams): UsePortal
     const tick = async () => {
       if (cancelledRef.current) return;
       if (Date.now() > deadline) {
-        setError('Sign-in timed out. Try again.');
+        setError('The sign-in took too long. Try again.');
         setPhase('error');
         return;
       }
@@ -82,6 +91,7 @@ export function usePortalSignIn({ onSuccess }: UsePortalSignInParams): UsePortal
         if (await portalAuthService.acceptTokens(status)) {
           await queryClient.cancelQueries();
           queryClient.clear();
+          authorizeUrlRef.current = null;
           setPhase('idle');
           onSuccess();
           return;
@@ -94,5 +104,5 @@ export function usePortalSignIn({ onSuccess }: UsePortalSignInParams): UsePortal
     timerRef.current = window.setTimeout(() => void tick(), POLL_INTERVAL_MS);
   }, [onSuccess, queryClient, stopPolling]);
 
-  return { phase, error, signIn, cancel };
+  return { phase, error, signIn, openAgain, cancel };
 }

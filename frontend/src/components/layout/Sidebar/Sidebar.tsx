@@ -16,6 +16,7 @@ import { SidebarResizeHandle } from './SidebarResizeHandle';
 import { SidebarActions } from './SidebarActions';
 import { SidebarChannels } from './SidebarChannels';
 import { SidebarChatList } from './SidebarChatList';
+import { SidebarOrdinNudge } from './SidebarOrdinNudge';
 import { SidebarOverlays } from './SidebarOverlays';
 import { type ChatRowProps } from './SidebarChatRow';
 import { buildRecentChatSections } from './sidebarGrouping';
@@ -215,6 +216,8 @@ export function Sidebar({
           filterWorkspaceId={filters.workspaceId}
           selectedChannelId={selectedChannelId}
         />
+
+        <SidebarOrdinNudge />
 
         <SidebarChatList
           scrollContainerRef={scrollContainerRef}
