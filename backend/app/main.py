@@ -19,6 +19,9 @@ from app.api.endpoints import (
     chat,
     channels,
     github,
+    ordin_cloud,
+    ordin_proxy,
+    portal_auth,
     sandbox,
     workspace,
 )
@@ -121,6 +124,20 @@ def create_application() -> FastAPI:
 
     application.include_router(
         auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Authentication"]
+    )
+    application.include_router(
+        portal_auth.router,
+        prefix=f"{settings.API_V1_STR}/auth/portal",
+        tags=["Authentication"],
+    )
+    application.include_router(
+        ordin_cloud.router, prefix=f"{settings.API_V1_STR}/ordin", tags=["Ordin"]
+    )
+    # Ordin chats in the shape of a remote Agentrove instance (see the module).
+    application.include_router(
+        ordin_proxy.router,
+        prefix=f"/ordin-proxy{settings.API_V1_STR}",
+        tags=["Ordin"],
     )
     application.include_router(
         channels.router, prefix=f"{settings.API_V1_STR}/channels", tags=["Channels"]

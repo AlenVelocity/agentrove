@@ -13,6 +13,7 @@ import { useUIStore } from '@/store/uiStore';
 import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
 import { LoadingScreen } from '@/components/ui/LoadingScreen/LoadingScreen';
 import { useGlobalStream } from '@/hooks/useGlobalStream';
+import { useOrdinProxyBootstrap } from '@/hooks/useOrdinProxyBootstrap';
 import { useLocalStreamRestoration } from '@/hooks/useLocalStreamRestoration';
 import { useCloudStreamRestoration } from '@/hooks/useCloudStreamRestoration';
 import { useChatEvents } from '@/hooks/useChatEvents';
@@ -21,6 +22,7 @@ import { authService } from '@/services/authService';
 import { toasterConfig } from '@/config/toaster';
 import { AuthRoute } from '@/components/routes/AuthRoute/AuthRoute';
 import { setApiPort } from '@/lib/api';
+import { restoreOrdinProxyUrl } from '@/services/ordinCloudService';
 import { isTauri, invoke } from '@tauri-apps/api/core';
 import { isDesktopApp, isMobileApp } from '@/utils/platform';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -182,8 +184,10 @@ export default function App() {
   const [shellReady, setShellReady] = useState(!isTauri());
   const [desktopError, setDesktopError] = useState<string | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   useGlobalStream({ enabled: authHydrated && shellReady });
+  useOrdinProxyBootstrap(authHydrated && shellReady && isAuthenticated);
 
   useMountEffect(() => {
     let cancelled = false;
@@ -240,6 +244,7 @@ export default function App() {
       .then((port) => {
         if (cancelled) return;
         setApiPort(port);
+        restoreOrdinProxyUrl(port);
         setShellReady(true);
         revealAppWindow();
       })

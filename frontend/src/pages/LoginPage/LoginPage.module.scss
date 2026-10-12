@@ -44,6 +44,22 @@
   width: 100%;
 }
 
+.portal {
+  > * + * {
+    margin-top: var(--space-4);
+  }
+}
+
+.portal-button {
+  width: 100%;
+}
+
+.portal-hint {
+  @include type.type-default(500);
+  color: var(--theme-text-secondary);
+  text-align: center;
+}
+
 .footer {
   padding-top: var(--space-4);
   text-align: center;

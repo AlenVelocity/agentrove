@@ -156,6 +156,19 @@ class Settings(BaseSettings):
     BROWSER_USE_API_KEY: str = ""
     AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS: int = 604800
 
+    # Sign in with the portal's OAuth server (desktop). All three are needed:
+    # the issuer origin, the public client id registered there, and the
+    # portal-mcp URL the token is issued for, which the agent then gets as an
+    # MCP server. See app/services/portal_auth.py.
+    PORTAL_OAUTH_ISSUER: str = ""
+    PORTAL_OAUTH_CLIENT_ID: str = ""
+    PORTAL_MCP_URL: str = ""
+
+    # Ordin cloud chats in the sidebar (desktop). The API origin the sidecar
+    # signs in to on the user's behalf and the web app that opens a chat.
+    ORDIN_API_URL: str = ""
+    ORDIN_WEB_URL: str = ""
+
     DOCKER_IMAGE: str = "ghcr.io/mng-dev-ai/agentrove-sandbox:latest"
     DOCKER_NETWORK: str = "agentrove-sandbox-net"
     DOCKER_HOST: str | None = None

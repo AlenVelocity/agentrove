@@ -12,6 +12,11 @@ export const queryKeys = {
   auth: {
     user: 'auth-user',
   },
+  ordin: {
+    config: ['ordin', 'config'] as const,
+    status: ['ordin', 'status'] as const,
+    chats: ['ordin', 'chats'] as const,
+  },
   settings: 'settings',
   skills: 'skills',
   sandbox: {

@@ -11,6 +11,7 @@ import {
   useCloudChatsTotalQuery,
   useCloudWorkspacesQuery,
 } from '@/hooks/queries/useCloudQueries';
+import { OrdinCloudCard } from './OrdinCloudCard';
 import styles from './CloudSettingsTab.module.scss';
 
 function StatusPill({ connected }: { connected: boolean }) {
@@ -94,6 +95,7 @@ export function CloudSettingsTab() {
   if (isConnected) {
     return (
       <div className={styles.cloud}>
+        <OrdinCloudCard />
         <div className={styles.card}>
           <div className={styles['card-header']}>
             <h2 className={styles.url}>{cloudUrl}</h2>
@@ -119,6 +121,7 @@ export function CloudSettingsTab() {
 
   return (
     <div className={styles.cloud}>
+      <OrdinCloudCard />
       <div className={styles.card}>
         <div className={styles['instance-header']}>
           <h2 className={styles['instance-title']}>Cloud Instance</h2>

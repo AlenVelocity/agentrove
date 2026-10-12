@@ -39,6 +39,7 @@ from app.services.acp.session import AcpSession, AcpSessionConfig
 from app.services.exceptions import AgentException, ChatException, ErrorCode
 from app.constants import MODELS
 from app.services.git import GitService
+from app.services.portal_auth import portal_auth_service
 from app.services.sandbox import SandboxService
 from app.services.sandbox_providers import SandboxProviderType
 from app.services.sandbox_providers.base import SandboxProvider
@@ -578,6 +579,20 @@ class AgentService:
         )
         env.update(session_config.env_overrides)
 
+        mcp_servers = self._build_mcp_server_configs(
+            chat_id,
+            user_id,
+            sandbox_provider,
+            agentrove_mcp=not channel_member
+            or permission_mode in FULL_ACCESS_SESSION_MODES[agent_kind],
+            current_chat_id=None if channel_member else chat_id,
+        )
+        # The portal MCP server as the signed-in portal user; absent when they
+        # did not sign in with the portal or the grant has lapsed.
+        portal_server = await portal_auth_service.mcp_server_config(UUID(user_id))
+        if portal_server:
+            mcp_servers.append(portal_server)
+
         return AcpSessionConfig(
             sandbox_id=sandbox_id,
             sandbox_provider=sandbox_provider,
@@ -585,14 +600,7 @@ class AgentService:
             user_id=user_id,
             agent_kind=agent_kind,
             env=env,
-            mcp_servers=self._build_mcp_server_configs(
-                chat_id,
-                user_id,
-                sandbox_provider,
-                agentrove_mcp=not channel_member
-                or permission_mode in FULL_ACCESS_SESSION_MODES[agent_kind],
-                current_chat_id=None if channel_member else chat_id,
-            ),
+            mcp_servers=mcp_servers,
             model=model_id,
             channel_member=channel_member,
             permission_mode=session_config.session_mode,
