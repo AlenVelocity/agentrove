@@ -63,6 +63,18 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     refresh_tokens = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan"
     )
+    portal_credential = relationship(
+        "PortalCredential",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    ordin_credential = relationship(
+        "OrdinCredential",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 class UserSettings(Base):

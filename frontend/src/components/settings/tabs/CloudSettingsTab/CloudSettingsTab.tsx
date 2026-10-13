@@ -11,6 +11,8 @@ import {
   useCloudChatsTotalQuery,
   useCloudWorkspacesQuery,
 } from '@/hooks/queries/useCloudQueries';
+import { isOrdinProxyUrl } from '@/services/ordinCloudService';
+import { OrdinCloudCard } from './OrdinCloudCard';
 import styles from './CloudSettingsTab.module.scss';
 
 function StatusPill({ connected }: { connected: boolean }) {
@@ -91,9 +93,19 @@ export function CloudSettingsTab() {
     toast.success('Disconnected from cloud instance');
   };
 
+  // Ordin uses the cloud slot through the sidecar's proxy; its own card covers it.
+  if (isConnected && isOrdinProxyUrl(cloudUrl)) {
+    return (
+      <div className={styles.cloud}>
+        <OrdinCloudCard />
+      </div>
+    );
+  }
+
   if (isConnected) {
     return (
       <div className={styles.cloud}>
+        <OrdinCloudCard />
         <div className={styles.card}>
           <div className={styles['card-header']}>
             <h2 className={styles.url}>{cloudUrl}</h2>
@@ -119,6 +131,7 @@ export function CloudSettingsTab() {
 
   return (
     <div className={styles.cloud}>
+      <OrdinCloudCard />
       <div className={styles.card}>
         <div className={styles['instance-header']}>
           <h2 className={styles['instance-title']}>Cloud Instance</h2>
