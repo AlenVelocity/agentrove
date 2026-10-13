@@ -1,17 +1,21 @@
 import asyncio
 import contextlib
-import fcntl
 import logging
 import os
-import pty
 import shlex
+import shutil
 import signal
 import subprocess
+import sys
 import tempfile
-import termios
 import uuid
 from pathlib import Path
 from typing import Any
+
+if sys.platform != "win32":
+    import fcntl
+    import pty
+    import termios
 
 from app.constants import (
     SANDBOX_BINARY_EXTENSIONS,
@@ -29,10 +33,42 @@ from app.services.sandbox_providers.types import (
     PtyExitCallbackType,
     PtySize,
 )
+from app.utils.process import terminate_process_tree
 from app.utils.sandbox import normalize_relative_path
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+def _git_bash_candidates() -> list[Path]:
+    roots = [
+        os.environ.get("ProgramFiles"),
+        os.environ.get("ProgramFiles(x86)"),
+        os.environ.get("LocalAppData"),
+    ]
+    candidates: list[Path] = []
+    for root in roots:
+        if not root:
+            continue
+        for git_dir in (Path(root) / "Git", Path(root) / "Programs" / "Git"):
+            candidates.append(git_dir / "bin" / "bash.exe")
+            candidates.append(git_dir / "usr" / "bin" / "bash.exe")
+    return candidates
+
+
+def _login_shell() -> list[str]:
+    if sys.platform != "win32":
+        return ["bash", "-lc"]
+    # Git for Windows' bash, which Claude Code needs on Windows anyway.
+    # System32\bash.exe is the WSL launcher and would run the command inside
+    # a Linux distro, so it is skipped; cmd.exe is the last resort.
+    for candidate in _git_bash_candidates():
+        if candidate.is_file():
+            return [str(candidate), "-lc"]
+    found = shutil.which("bash")
+    if found and "system32" not in found.lower():
+        return [found, "-lc"]
+    return ["cmd.exe", "/d", "/s", "/c"]
 
 
 class LocalHostProvider(SandboxProvider):
@@ -45,17 +81,9 @@ class LocalHostProvider(SandboxProvider):
         return str(self._workspace)
 
     @staticmethod
-    def _signal_process_group(pid: int, sig: signal.Signals) -> None:
+    def _signal_process_group(pid: int, *, force: bool) -> None:
         # start_new_session=True makes the pid its own process-group leader.
-        try:
-            os.killpg(pid, sig)
-        except ProcessLookupError:
-            pass
-        except PermissionError:
-            # macOS can return EPERM for a group mid-teardown; fall back to
-            # signaling the leader directly (the pre-group-kill guarantee).
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, sig)
+        terminate_process_tree(pid, force=force)
 
     def _resolve_path(self, path: str) -> Path:
         # Resolve relative paths; reject ../ and symlink escapes of the workspace.
@@ -82,8 +110,7 @@ class LocalHostProvider(SandboxProvider):
         # killing only bash orphans children (e.g. a hung `python3 <<heredoc`)
         # to PID 1, where they keep running unsupervised.
         process = await asyncio.create_subprocess_exec(
-            "bash",
-            "-lc",
+            *_login_shell(),
             command,
             cwd=workspace_dir_str,
             env=process_env,
@@ -97,7 +124,7 @@ class LocalHostProvider(SandboxProvider):
                 process.communicate(), timeout=timeout
             )
         except asyncio.TimeoutError:
-            self._signal_process_group(process.pid, signal.SIGKILL)
+            self._signal_process_group(process.pid, force=True)
             await process.wait()
             raise TimeoutError(f"Command execution timed out after {timeout}s")
 
@@ -221,6 +248,10 @@ class LocalHostProvider(SandboxProvider):
         on_exit: PtyExitCallbackType,
         user_id: str = "",
     ) -> str:
+        if sys.platform == "win32":
+            # Needs a ConPTY-backed implementation (pywinpty); until then the
+            # terminal view is unavailable on Windows.
+            raise SandboxException("Terminal sessions are not supported on Windows yet")
         # tmux for reconnect persistence; default shell if missing.
         session_id = str(uuid.uuid4())
         master_fd, slave_fd = pty.openpty()
@@ -345,11 +376,11 @@ class LocalHostProvider(SandboxProvider):
             # Signal the whole process group, not just the shell — its children
             # would otherwise orphan to PID 1 and keep running. The tmux server
             # daemonizes into its own session, so tmux persistence is unaffected.
-            self._signal_process_group(process.pid, signal.SIGTERM)
+            self._signal_process_group(process.pid, force=False)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 await asyncio.to_thread(process.wait, 2)
             if process.poll() is None:
-                self._signal_process_group(process.pid, signal.SIGKILL)
+                self._signal_process_group(process.pid, force=True)
 
         with contextlib.suppress(OSError):
             os.close(session["master_fd"])

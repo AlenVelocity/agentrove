@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "Agentrove",
+        "width": 1050,
+        "height": 1100,
+        "minWidth": 940,
+        "minHeight": 560,
+        "resizable": true,
+        "visible": false,
+        "devtools": true,
+        "dragDropEnabled": false,
+        "titleBarStyle": "Visible",
+        "hiddenTitle": false
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    }
+  }
+}

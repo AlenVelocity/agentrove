@@ -11,8 +11,12 @@ permissions:
 
 jobs:
   publish:
-    name: Build and Publish Desktop Release
-    runs-on: macos-latest
+    name: Build and Publish Desktop Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -34,11 +38,13 @@ jobs:
           npm ci --legacy-peer-deps
 
       - name: Set version from tag
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cd frontend/src-tauri
           jq --arg v "$VERSION" '.version = $v' tauri.conf.json > tmp.json && mv tmp.json tauri.conf.json
-          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          # -i.bak works on both BSD (macOS) and GNU (Windows runner) sed.
+          sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml && rm Cargo.toml.bak
 
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
